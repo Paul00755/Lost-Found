@@ -1,89 +1,55 @@
-import React, { useState } from "react";
+// src/pages/Register.jsx
+import React, { useState, useContext } from "react";
 import { CognitoUserAttribute } from "amazon-cognito-identity-js";
 import UserPool from "../utils/cognitoConfig";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { ThemeContext } from "../context/ThemeContext";
 
 function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const navigate = useNavigate();
+  const { darkMode } = useContext(ThemeContext);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-
-    const attributeList = [
-      new CognitoUserAttribute({
-        Name: "email",
-        Value: email,
-      }),
-    ];
-
+    const attributeList = [new CognitoUserAttribute({ Name: "email", Value: email })];
     UserPool.signUp(email, password, attributeList, null, (err, data) => {
       if (err) {
         setMessage("❌ " + err.message);
       } else {
-        setMessage("✅ A verification code has been sent to your email.");
+        setMessage("✅ Verification code sent!");
+        navigate("/confirm", { state: { email } });
       }
     });
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
-        <h2 className="text-2xl font-bold text-blue-700 text-center mb-6">
-          Create a New Account
-        </h2>
-
+    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow p-8 w-full max-w-md`}>
+        <h2 className="text-2xl font-bold mb-6 text-center text-blue-600">Register</h2>
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              placeholder="example@email.com"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              placeholder="********"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
-          >
+          {["email", "password"].map((field) => (
+            <div key={field}>
+              <label className="block mb-1">{field.charAt(0).toUpperCase() + field.slice(1)}</label>
+              <input
+                type={field}
+                placeholder={field}
+                className={`w-full px-4 py-2 rounded border focus:outline-none focus:ring ${
+                  darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                }`}
+                value={field === "email" ? email : password}
+                onChange={(e) => (field === "email" ? setEmail(e.target.value) : setPassword(e.target.value))}
+                required
+              />
+            </div>
+          ))}
+          <button className="w-full bg-blue-600 py-2 rounded text-white hover:bg-blue-700 transition">
             Register
           </button>
         </form>
-
-        {message && (
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-700">{message}</p>
-            {message.includes("verification code") && (
-              <Link
-                to="/confirm"
-                className="inline-block mt-2 text-blue-600 font-semibold hover:underline"
-              >
-                ➤ Click here to Confirm Signup
-              </Link>
-            )}
-          </div>
-        )}
+        {message && <p className="mt-4 text-center">{message}</p>}
       </div>
     </div>
   );
