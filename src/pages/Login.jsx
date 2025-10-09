@@ -28,11 +28,20 @@ function Login() {
     });
 
     user.authenticateUser(authDetails, {
-      onSuccess: () => {
-        setMessage("✅ Login successful! Redirecting...");
-        setUser(user);
-        setTimeout(() => navigate("/"), 2000);
-      },
+     onSuccess: (result) => {
+    const idToken = result.getIdToken().getJwtToken();   // ✅ get idToken
+    const accessToken = result.getAccessToken().getJwtToken();
+    const refreshToken = result.getRefreshToken().getToken();
+
+  // ✅ Save in localStorage so you can attach to API requests later
+      localStorage.setItem("idToken", idToken);
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("refreshToken", refreshToken);
+
+      setMessage("✅ Login successful! Redirecting...");
+      setUser(user);
+      setTimeout(() => navigate("/"), 2000);
+    },
       onFailure: (err) => {
         setMessage("❌ " + err.message);
       },

@@ -10,6 +10,11 @@ import ConfirmSignup from "./pages/ConfirmSignup.jsx";
 import PrivateRoute from "./components/PrivateRoute";
 import ForgotPassword from "./pages/ForgotPassword";
 import FindItems from "./pages/FindItems";
+import 'react-toastify/dist/ReactToastify.css';
+import { ToastContainer } from 'react-toastify';
+import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
+
 function App() {
   return (
     <Router>
@@ -23,7 +28,7 @@ function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/confirm" element={<ConfirmSignup />} />
             <Route path="/find" element={<FindItems />} />
-
+            
             <Route path="/submit" element={
               <PrivateRoute>
                 <SubmitItem />
