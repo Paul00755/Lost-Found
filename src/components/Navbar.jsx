@@ -14,33 +14,57 @@ function Navbar() {
     navigate("/login");
   };
 
-  const userRole = localStorage.getItem("userRole");
-  const userEmail = localStorage.getItem("userEmail") || localStorage.getItem("adminEmail");
+  // Improved user data retrieval
+  const getUserData = () => {
+    const userRole = localStorage.getItem("userRole");
+    let userEmail = "";
+    let displayName = "User";
 
-  // Function to get display name from email
-  const getDisplayName = () => {
-    if (userEmail) {
-      // Extract name from email (e.g., "john.doe@gmail.com" -> "John Doe")
-      const emailPart = userEmail.split('@')[0];
-      const nameParts = emailPart.split('.');
+    // Check both possible email storage locations
+    if (userRole === "admin") {
+      userEmail = localStorage.getItem("adminEmail") || localStorage.getItem("userEmail") || "";
+    } else {
+      userEmail = localStorage.getItem("userEmail") || localStorage.getItem("adminEmail") || "";
+    }
+
+    // If no email found in localStorage, try to get from AuthContext user object
+    if (!userEmail && user && user.email) {
+      userEmail = user.email;
+    }
+
+    // Function to format display name from email
+    const formatDisplayName = (email) => {
+      if (!email) return 'User';
+      
+      const emailPart = email.split('@')[0];
+      const nameParts = emailPart.split(/[._]/); // Split by dot or underscore
       const formattedName = nameParts.map(part => 
         part.charAt(0).toUpperCase() + part.slice(1)
       ).join(' ');
       return formattedName;
-    }
-    return 'User';
+    };
+
+    displayName = formatDisplayName(userEmail);
+
+    // Function to get initials from display name
+    const getInitials = (name) => {
+      return name
+        .split(' ')
+        .map(word => word.charAt(0))
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+    };
+
+    return {
+      role: userRole,
+      email: userEmail,
+      displayName: displayName,
+      initials: getInitials(displayName)
+    };
   };
 
-  // Function to get initials from display name
-  const getInitials = () => {
-    const displayName = getDisplayName();
-    return displayName
-      .split(' ')
-      .map(word => word.charAt(0))
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
+  const userData = getUserData();
 
   return (
     <nav className="bg-white dark:bg-gray-900 shadow-lg sticky top-0 z-50 transition-colors duration-300 border-b border-gray-200 dark:border-gray-700">
@@ -98,7 +122,7 @@ function Navbar() {
             </Link>
 
             {/* Admin Link - Only for admin users who are logged in */}
-            {user && userRole === "admin" && (
+            {user && userData.role === "admin" && (
               <Link
                 to="/admin"
                 className="flex items-center space-x-1 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium transition-colors px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
@@ -115,17 +139,20 @@ function Navbar() {
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
                     <span className="text-white text-sm font-semibold">
-                      {getInitials()}
+                      {userData.initials}
                     </span>
                   </div>
                   <div className="hidden sm:block text-sm">
                     <div className="text-gray-700 dark:text-gray-200 font-medium flex items-center gap-1">
                       <Mail size={12} className="text-gray-500" />
-                      {getDisplayName()}
+                      {userData.displayName}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 capitalize flex items-center gap-1">
-                      <div className={`w-2 h-2 rounded-full ${userRole === 'admin' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
-                      {userRole || 'user'}
+                      <div className={`w-2 h-2 rounded-full ${userData.role === 'admin' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                      {userData.role || 'user'}
+                      {userData.email && (
+                        <span className="ml-1 text-gray-400">• {userData.email}</span>
+                      )}
                     </div>
                   </div>
                 </div>
