@@ -14,9 +14,10 @@ import 'react-toastify/dist/ReactToastify.css';
 import { ToastContainer } from 'react-toastify';
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
-import AdminPanel from './pages/AdminPanel'; // Make sure this import exists
+import AdminPanel from './pages/AdminPanel'; 
 import ReturnedItems from './pages/ReturnedItems';
-
+import SettingsPage from "./pages/SettingsPage.jsx";
+import Profile from "./pages/Profile.jsx";
 function App() {
   return (
     <Router>
@@ -32,6 +33,8 @@ function App() {
             <Route path="/find" element={<FindItems />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/returned" element={<ReturnedItems />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<SettingsPage />} />  
             <Route path="/submit" element={
               <PrivateRoute>
                 <SubmitItem />
