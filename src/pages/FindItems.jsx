@@ -1,3 +1,4 @@
+// FindItems.jsx
 import React, { useEffect, useState } from "react";
 import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
@@ -19,6 +20,37 @@ const FindItems = () => {
 
   // Admin check (simple): set localStorage.setItem('isAdmin','true') for admin testing
   const isAdmin = typeof window !== "undefined" && localStorage.getItem("isAdmin") === "true";
+
+  // Helper: unify id extraction
+  const getId = (it) => (it && (it.id || it.itemId || it.itemID || it.idStr || it.uuid || ""));
+
+  // Deleted-IDs list helpers (stored in localStorage so other pages/components agree)
+  const readDeletedIds = () => {
+    try {
+      const raw = localStorage.getItem("deletedItemIds") || "[]";
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  };
+  const writeDeletedIds = (arr) => {
+    try { localStorage.setItem("deletedItemIds", JSON.stringify(Array.isArray(arr) ? arr : [])); } catch(e){}
+  };
+  const addDeletedId = (id) => {
+    if (!id) return;
+    const cur = readDeletedIds();
+    if (!cur.includes(id)) {
+      cur.push(id);
+      writeDeletedIds(cur);
+    }
+  };
+  const removeDeletedId = (id) => {
+    if (!id) return;
+    const cur = readDeletedIds();
+    const remaining = cur.filter(x => x !== id);
+    writeDeletedIds(remaining);
+  };
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -47,11 +79,13 @@ const FindItems = () => {
       console.log("🔄 Fetching latest items...");
 
       const currentStored = JSON.parse(localStorage.getItem("foundItems")) || [];
+      // show cached data quickly while fetching
       setItems(currentStored);
 
       let apiResponseData = null;
       let usedApiHelper = false;
 
+      // Try helper first (if present)
       try {
         if (api && typeof api.getItems === "function") {
           console.log("api.js: trying api.getItems()");
@@ -64,12 +98,12 @@ const FindItems = () => {
         apiResponseData = null;
       }
 
+      // Fallback to direct fetch
       if (!apiResponseData) {
         const endpoint = `${API_BASE}/items`;
         console.log("api.js: falling back to direct fetch ->", endpoint);
 
         try {
-          console.log("Attempting GET /items (no body)...");
           const res = await fetch(endpoint, {
             method: "GET",
             headers: {
@@ -84,7 +118,7 @@ const FindItems = () => {
           } else {
             console.warn("GET /items returned status", res.status);
             if (res.status === 400) {
-              console.log("GET returned 400; will try POST /items with empty payload");
+              // unlikely, but try POST fallback (legacy)
               const postRes = await fetch(endpoint, {
                 method: "POST",
                 headers: {
@@ -95,15 +129,14 @@ const FindItems = () => {
               });
               if (postRes.ok) {
                 apiResponseData = await postRes.json();
-                console.log("POST /items OK");
+                console.log("POST /items OK (fallback)");
               } else {
                 console.warn("POST /items returned status", postRes.status);
                 throw new Error(`Server responded ${postRes.status}`);
               }
             } else {
-              let text = await res.text();
-              console.warn("GET /items non-OK response body:", text);
-              throw new Error(`GET /items failed: ${res.status}`);
+              const text = await res.text().catch(() => "");
+              throw new Error(`GET /items failed: ${res.status} ${text}`);
             }
           }
         } catch (fetchErr) {
@@ -112,7 +145,7 @@ const FindItems = () => {
         }
       }
 
-      // normalize response
+      // normalize response -> apiItems (array)
       let apiItems = [];
       if (Array.isArray(apiResponseData)) apiItems = apiResponseData;
       else if (apiResponseData && Array.isArray(apiResponseData.items)) apiItems = apiResponseData.items;
@@ -127,14 +160,63 @@ const FindItems = () => {
         }
       }
 
-      if (apiItems && apiItems.length >= 0) {
-        const merged = mergeItems(currentStored, apiItems);
-        setItems(merged);
-        localStorage.setItem("foundItems", JSON.stringify(merged));
+      // If we have API data, treat it as authoritative and clean it before storing locally
+      if (Array.isArray(apiItems)) {
+        // Filter out server-side soft-deleted items
+        apiItems = apiItems.filter(it => !(it && it.deleted === true));
+
+        // Also remove any ids recorded as locally deleted (admin delete), even if API still returns them temporarily
+        const deletedIds = readDeletedIds();
+        if (deletedIds.length > 0) {
+          apiItems = apiItems.filter(it => {
+            const id = getId(it);
+            return !id || !deletedIds.includes(id);
+          });
+        }
+
+        // Build set of API ids for cleanup logic
+        const apiIdSet = new Set(apiItems.map(it => getId(it)).filter(Boolean));
+
+        // Preserve "pending" local-only items:
+        // keep items from currentStored that do NOT have an id at all (temp entries) OR are very recent (<2 minutes)
+        const now = Date.now();
+        const pendingLocal = (currentStored || []).filter((locIt) => {
+          const locId = getId(locIt);
+          const locTs = locIt?.timestamp ? Number(locIt.timestamp) : null;
+          // if no id -> probably a local/temp item, keep it
+          if (!locId) return true;
+          // if id not present in API but timestamp is very recent (2 minutes), keep (pending)
+          if (!apiIdSet.has(locId) && locTs && (now - locTs) < (2 * 60 * 1000)) return true;
+          // otherwise do not keep (we trust API)
+          return false;
+        });
+
+        // Merge: API items first (authoritative), then pending local items appended
+        const merged = [...apiItems, ...pendingLocal];
+
+        // Deduplicate just in case (by id + timestamp)
+        const seen = new Map();
+        const deduped = [];
+        merged.forEach((it) => {
+          const key = (getId(it) || "") + "::" + (it.timestamp ? String(it.timestamp) : "");
+          if (!seen.has(key)) {
+            seen.set(key, true);
+            deduped.push(it);
+          }
+        });
+
+        // Cleanup deletedIds: remove any deletedId that no longer appears in raw API (it was removed server-side)
+        const stillPresentDeleted = deletedIds.filter(did => apiIdSet.has(did));
+        writeDeletedIds(stillPresentDeleted);
+
+        // Persist authoritative view
+        setItems(deduped);
+        localStorage.setItem("foundItems", JSON.stringify(deduped));
         localStorage.setItem("lastDataUpdate", Date.now().toString());
         setLastUpdate(new Date().toLocaleString());
-        console.log("✅ Updated with API data, count:", merged.length, usedApiHelper ? "(from api.getItems())" : "(direct fetch)");
+        console.log("✅ Updated with API data, count:", deduped.length, usedApiHelper ? "(from api.getItems())" : "(direct fetch)");
       } else {
+        // No usable API array -> keep current stored items and notify
         setItems(currentStored);
         setError("No new items found from server. Showing local data.");
         console.log("ℹ️ Using local storage data (no usable API response)");
@@ -149,7 +231,8 @@ const FindItems = () => {
     }
   };
 
-  // merge items: prefer API; dedupe by id AND by timestamp (to replace temp local items)
+  // merge items: prefer API; dedupe by id AND by timestamp (kept for compatibility with some code paths)
+  // NOTE: this is still used in places where you might want to combine arrays outside fetchItems
   const mergeItems = (localItems, apiItems) => {
     const merged = [...localItems];
 
@@ -181,7 +264,7 @@ const FindItems = () => {
       }
     });
 
-    // Optionally remove duplicates if any remaining (by id or timestamp)
+    // remove duplicates
     const seen = new Map();
     const deduped = [];
     merged.forEach((it) => {
@@ -317,17 +400,15 @@ const FindItems = () => {
         }
       }
 
-      // remove locally
-      const newItems = items.filter(it => (it.id || it.itemId || it.itemID) !== itemId);
-      setItems(newItems);
-      setFilteredItems(prev => prev.filter(it => (it.id || it.itemId || it.itemID) !== itemId));
-      localStorage.setItem("foundItems", JSON.stringify(newItems));
+      // We hide the deleted item locally immediately (useful when API still returns it briefly)
+      addDeletedId(itemId);
+
+      // Immediately refresh from API (this will overwrite localStorage with API truth)
+      await fetchItems();
 
       // notify others
       try { window.dispatchEvent(new Event("foundItems:refresh")); } catch(e) {}
 
-      // optional toast
-      // toast.success("Item deleted");
     } catch (err) {
       console.error("Delete error:", err);
       setError("Failed to delete item. Check server logs or permissions.");
@@ -431,7 +512,7 @@ const FindItems = () => {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredItems.map((item, idx) => (
-            <div key={item.itemId || item.id || idx} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md transition-all duration-300 hover:-translate-y-1">
+            <div key={getId(item) || idx} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md transition-all duration-300 hover:-translate-y-1">
               {item.images?.length > 0 ? (
                 <Slider {...sliderSettings}>
                   {item.images.map((img, i) => (
@@ -463,7 +544,7 @@ const FindItems = () => {
                   {/* Admin delete */}
                   {isAdmin && (
                     <div>
-                      <button onClick={() => handleDelete(item.id || item.itemId)} className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm">
+                      <button onClick={() => handleDelete(getId(item))} className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm">
                         Delete
                       </button>
                     </div>

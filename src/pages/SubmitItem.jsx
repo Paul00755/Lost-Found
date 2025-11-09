@@ -18,6 +18,15 @@ const SubmitItem = () => {
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
+  // Get logged-in user's email for item association
+  const userEmail = (() => {
+    const r = localStorage.getItem("userRole");
+    const e = r === "admin"
+      ? (localStorage.getItem("adminEmail") || localStorage.getItem("userEmail"))
+      : (localStorage.getItem("userEmail") || localStorage.getItem("adminEmail"));
+    return (e || "").toLowerCase();
+  })();
+
   const handleChange = (e) => {
     setItemData({ ...itemData, [e.target.name]: e.target.value });
   };
@@ -143,6 +152,7 @@ const SubmitItem = () => {
 
     const payload = {
       ...itemData,
+      email: userEmail, // Use logged-in user's email for item association
       images,
       timestamp: submissionTimestamp
     };
