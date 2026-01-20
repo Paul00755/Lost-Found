@@ -164,7 +164,7 @@ const FindItems = () => {
       if (Array.isArray(apiItems)) {
         // Filter out server-side soft-deleted items
         apiItems = apiItems.filter(it => !(it && it.deleted === true));
-
+        apiItems = apiItems.filter(it => it.returned !== true);
         // Also remove any ids recorded as locally deleted (admin delete), even if API still returns them temporarily
         const deletedIds = readDeletedIds();
         if (deletedIds.length > 0) {
@@ -181,15 +181,12 @@ const FindItems = () => {
         // keep items from currentStored that do NOT have an id at all (temp entries) OR are very recent (<2 minutes)
         const now = Date.now();
         const pendingLocal = (currentStored || []).filter((locIt) => {
-          const locId = getId(locIt);
-          const locTs = locIt?.timestamp ? Number(locIt.timestamp) : null;
-          // if no id -> probably a local/temp item, keep it
-          if (!locId) return true;
-          // if id not present in API but timestamp is very recent (2 minutes), keep (pending)
-          if (!apiIdSet.has(locId) && locTs && (now - locTs) < (2 * 60 * 1000)) return true;
-          // otherwise do not keep (we trust API)
-          return false;
+        const locId = getId(locIt);
+        if (!locId) return true;        // temp items
+          return !apiIdSet.has(locId);    // keep until API confirms
+      
         });
+
 
         // Merge: API items first (authoritative), then pending local items appended
         const merged = [...apiItems, ...pendingLocal];
@@ -284,7 +281,7 @@ const FindItems = () => {
   }, [items, searchTerm, dateFilter, customDate, sortBy]);
 
   const filterItems = () => {
-    let filtered = [...items];
+    let filtered = items.filter(item => item.returned !== true);
 
     if (searchTerm) {
       filtered = filtered.filter(

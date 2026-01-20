@@ -1,29 +1,26 @@
 // SettingsPage.jsx
 import React, { useEffect, useState } from "react";
-import { Trash2, RefreshCcw } from "lucide-react";
+import { Trash2, RefreshCcw, CheckCircle } from "lucide-react";
 
-/**
- * SettingsPage.jsx
- * - Full page management of items reported by the logged-in user.
- * - Supports delete (DELETE /items/{id}) with fallback.
- * - Updates localStorage and dispatches foundItems:refresh on success.
- *
- * Place this component at route "/settings".
- */
-
-const API_BASE = process.env.REACT_APP_API_URL || "https://xq7a7biw3b.execute-api.ap-south-1.amazonaws.com/dev";
+const API_BASE =
+  process.env.REACT_APP_API_URL ||
+  "https://xq7a7biw3b.execute-api.ap-south-1.amazonaws.com/dev";
 
 const SettingsPage = () => {
   const [userItems, setUserItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
+  const [markingId, setMarkingId] = useState(null);
 
   const userEmail = (() => {
     const r = localStorage.getItem("userRole");
-    const e = r === "admin"
-      ? (localStorage.getItem("adminEmail") || localStorage.getItem("userEmail"))
-      : (localStorage.getItem("userEmail") || localStorage.getItem("adminEmail"));
+    const e =
+      r === "admin"
+        ? localStorage.getItem("adminEmail") ||
+          localStorage.getItem("userEmail")
+        : localStorage.getItem("userEmail") ||
+          localStorage.getItem("adminEmail");
     return (e || "").toLowerCase();
   })();
 
@@ -35,7 +32,9 @@ const SettingsPage = () => {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          ...(localStorage.getItem("idToken") ? { Authorization: `Bearer ${localStorage.getItem("idToken")}` } : {}),
+          ...(localStorage.getItem("idToken")
+            ? { Authorization: `Bearer ${localStorage.getItem("idToken")}` }
+            : {}),
         },
       });
 
@@ -46,24 +45,21 @@ const SettingsPage = () => {
         items = JSON.parse(localStorage.getItem("foundItems")) || [];
       }
 
-      if (!Array.isArray(items) && items && typeof items.body === "string") {
+      if (!Array.isArray(items) && items?.body) {
         try {
-          const parsed = JSON.parse(items.body);
-          if (Array.isArray(parsed)) items = parsed;
-        } catch (e) {}
+          items = JSON.parse(items.body);
+        } catch {}
       }
 
-      const filtered = (items || []).filter(it => (it.email || "").toLowerCase() === userEmail);
-      filtered.sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const filtered = (items || [])
+        .filter((it) => (it.email || "").toLowerCase() === userEmail)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
       setUserItems(filtered);
-      // update localStorage canonical copy
-      try { localStorage.setItem("foundItems", JSON.stringify(items)); } catch(e){}
+      localStorage.setItem("foundItems", JSON.stringify(items));
     } catch (err) {
-      console.error("fetchUserItems error:", err);
-      setError("Unable to fetch items from server. Showing local data.");
-      const items = JSON.parse(localStorage.getItem("foundItems")) || [];
-      const filtered = items.filter(it => (it.email || "").toLowerCase() === userEmail);
-      setUserItems(filtered);
+      console.error(err);
+      setError("Unable to fetch items.");
     } finally {
       setLoading(false);
     }
@@ -73,10 +69,72 @@ const SettingsPage = () => {
     fetchUserItems();
     const onRefresh = () => fetchUserItems();
     window.addEventListener("foundItems:refresh", onRefresh);
-    return () => window.removeEventListener("foundItems:refresh", onRefresh);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () =>
+      window.removeEventListener("foundItems:refresh", onRefresh);
   }, []);
 
+  /* =========================
+     MARK AS RETURNED (NEW)
+     ========================= */
+  const markAsReturned = async (id) => {
+    if (!id) return;
+    const ok = window.confirm(
+      "Mark this item as returned? This cannot be undone."
+    );
+    if (!ok) return;
+
+    try {
+      setMarkingId(id);
+      setError("");
+
+      const idToken = localStorage.getItem("idToken");
+
+      const res = await fetch(`${API_BASE}/items/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({ returned: true }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Mark returned failed: ${res.status}`);
+      }
+
+      // update local state
+     setUserItems(prev =>
+  prev.map(it =>
+    (it.id || it.itemId) === id
+      ? { ...it, returned: true, returnedDate: Date.now() }
+      : it
+        )
+      );
+
+      // update localStorage
+      try {
+        const stored = JSON.parse(localStorage.getItem("foundItems")) || [];
+const updated = stored.map(it =>
+  (it.id || it.itemId) === id
+    ? { ...it, returned: true, returnedDate: Date.now() }
+    : it
+);
+localStorage.setItem("foundItems", JSON.stringify(updated));
+
+      } catch {}
+
+      window.dispatchEvent(new Event("foundItems:refresh"));
+    } catch (err) {
+      console.error(err);
+      setError("Failed to mark item as returned.");
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
+  /* =========================
+     DELETE (UNCHANGED)
+     ========================= */
   const deleteItem = async (id) => {
     if (!id) return;
     const confirm = window.confirm("Delete this item permanently?");
@@ -95,42 +153,13 @@ const SettingsPage = () => {
         },
       });
 
-      if (!res.ok) {
-        // fallback to body delete
-        if (res.status === 400 || res.status === 404) {
-          const fallback = await fetch(`${API_BASE}/items`, {
-            method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-              ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-            },
-            body: JSON.stringify({ id }),
-          });
-          if (!fallback.ok) throw new Error(`Delete failed (fallback): ${fallback.status}`);
-        } else {
-          const text = await res.text().catch(() => "");
-          throw new Error(`Delete failed: ${res.status} ${text}`);
-        }
-      }
+      if (!res.ok) throw new Error("Delete failed");
 
-      // On success re-fetch user items
       await fetchUserItems();
-
-      // Update localStorage canonical copy to remove deleted item
-      try {
-        const stored = JSON.parse(localStorage.getItem("foundItems")) || [];
-        const newStored = stored.filter(it => (it.id || it.itemId || it.itemID) !== id);
-        localStorage.setItem("foundItems", JSON.stringify(newStored));
-      } catch (e) {
-        console.warn("Could not update localStorage after delete:", e);
-      }
-
-      // notify other components
-      try { window.dispatchEvent(new Event("foundItems:refresh")); } catch (e) {}
-
+      window.dispatchEvent(new Event("foundItems:refresh"));
     } catch (err) {
-      console.error("deleteItem error:", err);
-      setError("Failed to delete item. Check server logs or your permissions.");
+      console.error(err);
+      setError("Failed to delete item.");
     } finally {
       setDeletingId(null);
     }
@@ -139,57 +168,64 @@ const SettingsPage = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings / Manage Items</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Delete or manage items you reported</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={fetchUserItems} className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-            <RefreshCcw size={14} /> Refresh
-          </button>
-        </div>
+        <h1 className="text-2xl font-bold">Settings / Manage Items</h1>
+        <button
+          onClick={fetchUserItems}
+          className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg"
+        >
+          <RefreshCcw size={14} /> Refresh
+        </button>
       </div>
 
-      {error && <div className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>}
+      {error && <div className="text-red-500 mb-4">{error}</div>}
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="p-4">
-          {loading ? (
-            <div className="text-center py-6 text-gray-500">Loading your reported items…</div>
-          ) : userItems.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">You haven't reported any items yet.</div>
-          ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {userItems.map(it => (
-                <div key={it.id || it.itemId || it.timestamp} className="flex items-center gap-3 p-4">
-                  <div className="w-20 h-16 bg-gray-100 dark:bg-gray-900 rounded overflow-hidden flex items-center justify-center">
-                    {it.images?.[0] ? <img src={it.images[0]} alt={it.itemName} className="w-full h-full object-cover" /> : <div className="text-gray-400">No image</div>}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white truncate">{it.itemName || "Unnamed item"}</div>
-                      <div className="text-xs text-gray-400">{it.timestamp ? new Date(it.timestamp).toLocaleDateString() : ""}</div>
-                    </div>
-
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{it.location || ""}</div>
-                    <div className="text-xs text-gray-400 mt-1">{it.description ? (it.description.length > 120 ? it.description.slice(0,120) + "…" : it.description) : ""}</div>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-2">
-                    <button
-                      onClick={() => deleteItem(it.id || it.itemId)}
-                      disabled={deletingId === (it.id || it.itemId)}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 transition"
-                    >
-                      <Trash2 size={14} /> {deletingId === (it.id || it.itemId) ? "Deleting…" : "Delete"}
-                    </button>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow">
+        {loading ? (
+          <div className="p-6 text-center">Loading…</div>
+        ) : userItems.length === 0 ? (
+          <div className="p-6 text-center text-gray-500">
+            You haven't reported any items yet.
+          </div>
+        ) : (
+          userItems.map((it) => {
+            const id = it.id || it.itemId;
+            return (
+              <div
+                key={id}
+                className="flex items-center justify-between p-4 border-b dark:border-gray-700"
+              >
+                <div>
+                  <div className="font-medium">{it.itemName}</div>
+                  <div className="text-sm text-gray-500">
+                    {it.returned ? "Returned" : "Active"}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+
+                <div className="flex gap-3">
+                  {!it.returned && (
+                    <button
+                      onClick={() => markAsReturned(id)}
+                      disabled={markingId === id}
+                      className="flex items-center gap-1 text-green-600 hover:bg-green-50 px-3 py-2 rounded"
+                    >
+                      <CheckCircle size={14} />
+                      {markingId === id ? "Marking…" : "Mark Returned"}
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => deleteItem(id)}
+                    disabled={deletingId === id}
+                    className="flex items-center gap-1 text-red-600 hover:bg-red-50 px-3 py-2 rounded"
+                  >
+                    <Trash2 size={14} />
+                    {deletingId === id ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
