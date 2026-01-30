@@ -6,7 +6,7 @@ pipeline {
         CONTAINER_NAME = "lf-temp"
         AWS_DEFAULT_REGION = "ap-south-1"
         S3_BUCKET = "lost-and-found-portal-0075"
-        CLOUDFRONT_DIST_ID = "d37bexeixg1f6v"
+        CLOUDFRONT_DIST_ID = "E21U866ELWESC5"
     }
 
     stages {
