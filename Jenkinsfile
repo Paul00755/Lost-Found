@@ -4,6 +4,9 @@ pipeline {
     environment {
         IMAGE_NAME = "lf-build"
         CONTAINER_NAME = "lf-temp"
+        AWS_DEFAULT_REGION = "ap-south-1"
+        S3_BUCKET = "lost-and-found-portal-0075 "
+        CLOUDFRONT_DIST_ID = "d37bexeixg1f6v"
     }
 
     stages {
@@ -33,6 +36,34 @@ pipeline {
             }
         }
 
+        stage('Deploy to S3') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-jenkins'
+                ]]) {
+                    sh '''
+                    aws s3 sync build/ s3://$S3_BUCKET/ --delete
+                    '''
+                }
+            }
+        }
+
+        stage('Invalidate CloudFront') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-jenkins'
+                ]]) {
+                    sh '''
+                    aws cloudfront create-invalidation \
+                      --distribution-id $CLOUDFRONT_DIST_ID \
+                      --paths "/*"
+                    '''
+                }
+            }
+        }
+
         stage('Cleanup') {
             steps {
                 sh '''
@@ -49,3 +80,4 @@ pipeline {
         }
     }
 }
+
