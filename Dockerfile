@@ -2,14 +2,30 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy only dependency files first (for caching)
-COPY package.json package-lock.json ./
+# ======================
+# Backend setup
+# ======================
+COPY backend ./backend
+WORKDIR /app/backend
+RUN npm install
 
+# ======================
+# Frontend setup
+# ======================
+WORKDIR /app
+COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy rest of the source
 COPY . .
-
-# Build the React app
 RUN npm run build
+RUN npm install -g serve
 
+# ======================
+# Expose ports
+# ======================
+EXPOSE 2001 3001
+
+# ======================
+# Start both servers
+# ======================
+CMD sh -c "node backend/server.js & serve -s build -l 2001"
