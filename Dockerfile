@@ -1,21 +1,38 @@
 FROM node:18-alpine
 
+# ----------------------------
+# Set root working directory
+# ----------------------------
 WORKDIR /app
 
-# Backend
-COPY backend ./backend
+# ----------------------------
+# Copy entire project
+# ----------------------------
+COPY . .
+
+# ----------------------------
+# Install backend dependencies
+# ----------------------------
 WORKDIR /app/backend
-RUN npm install
+RUN npm install --production
 
-# Frontend
+# ----------------------------
+# Install frontend dependencies
+# ----------------------------
 WORKDIR /app
-COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY . .
+# ----------------------------
+# Build React frontend
+# ----------------------------
 RUN npm run build
 
-# Expose ONLY backend port
+# ----------------------------
+# Expose backend port (Express)
+# ----------------------------
 EXPOSE 3001
 
+# ----------------------------
+# Start full-stack server
+# ----------------------------
 CMD ["node", "backend/server.js"]
