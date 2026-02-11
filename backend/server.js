@@ -1,5 +1,6 @@
 const express = require("express");
 const client = require("prom-client");
+const path = require("path");
 
 const app = express();
 const PORT = 3001;
@@ -28,12 +29,24 @@ app.use((req, res, next) => {
 });
 
 /* =======================
-   BASIC ENDPOINTS
+   API ENDPOINTS
 ======================= */
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+/* =======================
+   SERVE REACT BUILD
+======================= */
+app.use(express.static(path.join(__dirname, "../build")));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../build", "index.html"));
+});
+
+/* =======================
+   METRICS ENDPOINT
+======================= */
 app.get("/metrics", async (req, res) => {
   res.set("Content-Type", client.register.contentType);
   res.end(await client.register.metrics());
@@ -43,5 +56,5 @@ app.get("/metrics", async (req, res) => {
    START SERVER
 ======================= */
 app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
+  console.log(`Full-stack app running on port ${PORT}`);
 });
