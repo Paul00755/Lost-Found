@@ -29,6 +29,14 @@ app.use((req, res, next) => {
 });
 
 /* =======================
+   METRICS ENDPOINT
+======================= */
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", client.register.contentType);
+  res.end(await client.register.metrics());
+});
+
+/* =======================
    API ENDPOINTS
 ======================= */
 app.get("/api/health", (req, res) => {
@@ -42,14 +50,6 @@ app.use(express.static(path.join(__dirname, "../build")));
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../build", "index.html"));
-});
-
-/* =======================
-   METRICS ENDPOINT
-======================= */
-app.get("/metrics", async (req, res) => {
-  res.set("Content-Type", client.register.contentType);
-  res.end(await client.register.metrics());
 });
 
 /* =======================
